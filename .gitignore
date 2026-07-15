@@ -1,0 +1,26 @@
+.DS_Store
+.build/
+dist/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+config.local.*
+Sources/AIQuota/LocalConfiguration.swift
+
+# Certificates, signing material, and private keys
+*.p12
+*.p8
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+
+# Collector outputs
+quota.json
+status.json
