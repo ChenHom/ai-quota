@@ -30,7 +30,7 @@ AIQuota macOS App（啟動、每 5 分鐘、手動重新整理）
 | 內網 HTTPS 請求失敗 | 信任 mkcert 根憑證 | 保留 URLSession 的正常 TLS 驗證 | 每台裝置要安裝信任根憑證 |
 | Web/跨平台框架發行檔太大 | 改用 SwiftUI/AppKit | 只需 macOS 選單列與讀 JSON | 失去跨平台性 |
 | Popover 遮住桌面，玻璃沒有質感 | 透明 `NSPanel` + SwiftUI `glassEffect` | 讓玻璃有真正可取樣的桌面背景 | 要自行處理定位與點擊外部關閉 |
-| 原生玻璃不想帶深色或指定顏色 | 外層使用 `.glassEffect(.clear)` | 保持系統原生材質、避免額外色彩填滿 | 最終對比受桌布與系統設定影響 |
+| 原生玻璃不想帶深色或指定顏色 | 初版用 `.glassEffect(.clear)`；已由第 7 節的 OSD 深色玻璃取代 | 保持系統原生材質、避免額外色彩填滿 | 最終對比受桌布與系統設定影響 |
 | 重新整理圖示太快或無法停止 | 最短 0.3 秒 + `TimelineView` | 讓動作可見且能立即停轉 | 載入時會以影格更新角度 |
 | 希望三個 Provider 一次看完 | 不使用捲軸，面板依內容高度配置 | 選單列工具應快速掃讀 | 300 pt 寬度使版面較緊湊 |
 | 發行檔案大小 | release build 後 `strip -S`，輸出 ZIP | 保留可開啟的 `.app`，同時縮小體積 | 目前未簽署與公證 |
@@ -38,6 +38,9 @@ AIQuota macOS App（啟動、每 5 分鐘、手動重新整理）
 | App 顯示網路離線，但 curl 正常 | 宣告本機網路用途並檢查 macOS 權限 | macOS 對 GUI App 有獨立的本機網路隱私控制 | 每個 Bundle ID 都可能需要重新授權 |
 | JSON 中 `resetsAt` 為 `null` | 將重置時間改為 Optional | 有額度視窗不代表一定有重置時間 | UI 必須處理空值 |
 | 日期顯示成英文月份 | 固定 `MM/dd HH:mm` | 不讓系統語系改變顯示格式 | 不採用使用者所在地的自然語系格式 |
+| 面板要貼近原生控制中心的玻璃 | 固定深色玻璃島（OSD 範式）+ 獨立暗化視窗 | 自動深淺適應只對內容稀疏的玻璃生效，資料密集卡片不可依賴 | 亮背景上仍為深色 |
+| 玻璃島不會自動深淺適應 | 拆掉 `GlassEffectContainer`、底層不墊任何同視窗圖層 | 玻璃只取樣視窗後方內容，墊底圖層會破壞適應 | 面板輪廓改由第二個視窗提供 |
+| `swift run` 讀不到額度網址 | 裸執行檔退回讀取打包版 UserDefaults 網域 | 沒有 bundle ID 時 `standard` 落在不同網域 | 發行 bundle ID 寫死於程式 |
 
 ---
 
@@ -461,3 +464,48 @@ App 啟動、每 300 秒、或使用者按下按鈕時讀取 JSON。`isRefreshin
 - 使用 POSIX locale 與 Gregorian calendar，固定格式為 `MM/dd HH:mm`，例如 `07/22 04:50`。
 
 固定格式避免使用者的系統語系改變欄位寬度與內容，也符合額度面板的既定顯示規格；代價是它不會跟隨本地化日期習慣，若未來支援多語系應改成依 locale 的格式策略。
+
+---
+
+## 7. Liquid Glass 面板重構：從仿控制中心到 OSD 範式
+
+### 目標
+
+以 macOS 26 控制中心（深色桌布上為深色透明玻璃、白色視窗前自動轉淺）為視覺基準，重做面板。初版的單一 `.glassEffect(.clear)` 大面板 + 卡片白描邊呈現「奶灰霧面 + 線框」，與原生差距大。
+
+### 迭代記錄（各方案與失敗原因）
+
+| 方案 | 結果 |
+|---|---|
+| `NSVisualEffectView` 當底 + `.regular` 玻璃島 | 只認 NSAppearance 不認背景；使用者為淺色系統 + 深色桌布，呈現「深背景上浮一塊淺灰霜面」 |
+| 面板跟隨選單列 `effectiveAppearance` | 選單列外觀由螢幕頂端桌布決定；面板後方是白色視窗時，原生轉淺而我們仍深 |
+| 整片 `.glassEffect(.regular)` 當底 | 會自動深淺適應（實測），但霧太重，背景文字透不過來 |
+| 整片 `.glassEffect(.clear)` 當底 | 透明度接近原生，但完全不適應——深背景上呈現淺色白霧 |
+| 玻璃探針讀 `@Environment(\.colorScheme)` | 適應不反映在 SwiftUI environment，讀不到 |
+| 同視窗墊半透明暗化層 / 玻璃底 | 墊底圖層成為玻璃的取樣對象，破壞島的適應；半透明像素疑似以亮底合成 |
+
+### 實驗得出的 Liquid Glass 行為規則（macOS 26，14+ 次控制變因測試）
+
+1. `.regular` 的自動深淺適應**只對內容稀疏的玻璃生效**：短文字、有留白的島會隨背景翻轉；內容橫跨整寬（進度列、多欄位 row）的島永遠維持系統外觀。逐一排除過：亮度、`frame`、`GeometryReader`、空 `Text`、島高度——唯一完美相關的變數是內容覆蓋率。
+2. `.clear` 不適應，只跟 NSAppearance；`Glass` 公開 API 僅 `.regular/.clear/.identity` + `.tint()/.interactive()`，`NSGlassEffectView` 僅 `style/tintColor`——沒有模糊量、透明度或適應開關。
+3. 適應在「顯示／重繪當下」取樣視窗後方的螢幕內容；之後移動視窗不會重新適應。`GlassEffectContainer` 會把整批玻璃鎖在第一次取樣。
+4. 玻璃只取樣「視窗後方」；任何同視窗的墊底圖層都會被當成取樣對象。
+5. 強制 `panel.appearance = darkAqua` 可把所有玻璃（含會適應的）釘在深色，整體一致。
+6. 控制中心「透明且自適應的底」需要取樣螢幕像素，第三方需要螢幕錄製權限——不可行。
+
+### 最終決策：音量 OSD 範式
+
+原生除了控制中心還有「永遠深色」的玻璃範式（音量／亮度 OSD）。實作：
+
+- macOS 26 強制 `panel.appearance = darkAqua`；pre-26 沿用選單列 `effectiveAppearance` 代理。
+- 每張卡為獨立 `.glassEffect(.regular)` 玻璃島，不用 `GlassEffectContainer`；進度列以 `.background(_, in: Capsule())` + mask 繪製，不用 `GeometryReader`。
+- 面板底層完全留空；控制中心式的暗化與輪廓由獨立的 `dimPanel`（child window、黑 14%、圓角 26、`ignoresMouseEvents`）墊在玻璃面板後方——因為在另一個視窗，會被玻璃取樣而不破壞行為。
+- 效果：深色背景上幾乎等同原生控制中心（縫隙透出清晰內容、島內模糊暈開）；亮背景上為刻意的深色煙燻玻璃，白字始終可讀。
+
+取捨：放棄全自動深淺適應（API 牆），換得任何背景下都協調一致；保留真實背景模糊與透出。
+
+### Debug hooks（視覺驗證用）
+
+- `AIQUOTA_SHOW_PANEL=1`：啟動 0.5 秒後自動展開面板。
+- `AIQUOTA_PANEL_XY=x,y`：指定面板位置（Cocoa 座標；在 `orderFront` 前生效，因為玻璃在顯示當下取樣）。
+- `AIQUOTA_NODIM=1`：停用暗化視窗。
