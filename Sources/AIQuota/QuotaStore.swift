@@ -32,7 +32,11 @@ final class QuotaStore: ObservableObject {
             guard let endpoint else {
                 throw QuotaConfigurationError.missingEndpoint
             }
-            let (data, response) = try await URLSession.shared.data(from: endpoint)
+            var request = URLRequest(url: endpoint)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 15
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
             }
