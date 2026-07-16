@@ -34,6 +34,8 @@ defaults write com.example.aiquota quotaEndpoint -string "https://quota.example.
 
 開發時也可暫時以 `AIQUOTA_ENDPOINT` 環境變數提供端點。請勿提交實際內網 URL、憑證、私鑰、帳密或 Provider access token。
 
+若端點位於內網 IP 或 `.local` 網域，首次開啟 App 時請允許 macOS 的「本機網路」權限；可在「系統設定 → 隱私權與安全性 → 本機網路」重新調整。
+
 ## 打包
 
 執行：

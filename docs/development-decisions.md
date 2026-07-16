@@ -34,6 +34,10 @@ AIQuota macOS App（啟動、每 5 分鐘、手動重新整理）
 | 重新整理圖示太快或無法停止 | 最短 0.3 秒 + `TimelineView` | 讓動作可見且能立即停轉 | 載入時會以影格更新角度 |
 | 希望三個 Provider 一次看完 | 不使用捲軸，面板依內容高度配置 | 選單列工具應快速掃讀 | 300 pt 寬度使版面較緊湊 |
 | 發行檔案大小 | release build 後 `strip -S`，輸出 ZIP | 保留可開啟的 `.app`，同時縮小體積 | 目前未簽署與公證 |
+| 清理 Git 歷史後 `dist/` 消失 | 以 `scripts/package.sh` 重新產生 | `dist/` 是可重建產物，不應提交 Git | 每次 clean checkout 後需重新打包 |
+| App 顯示網路離線，但 curl 正常 | 宣告本機網路用途並檢查 macOS 權限 | macOS 對 GUI App 有獨立的本機網路隱私控制 | 每個 Bundle ID 都可能需要重新授權 |
+| JSON 中 `resetsAt` 為 `null` | 將重置時間改為 Optional | 有額度視窗不代表一定有重置時間 | UI 必須處理空值 |
+| 日期顯示成英文月份 | 固定 `MM/dd HH:mm` | 不讓系統語系改變顯示格式 | 不採用使用者所在地的自然語系格式 |
 
 ---
 
@@ -245,6 +249,169 @@ App 以 `AIQUOTA_ENDPOINT` 環境變數或本機 `UserDefaults` 的 `quotaEndpoi
 
 ---
 
+## 5. 公開發布後的 release、權限與 JSON 相容性問題
+
+### 5.1 `dist/`／release 目錄消失
+
+#### 現象
+
+建立乾淨的公開 Git 歷史後，原本本機的 `dist/AIQuota.app` 與 ZIP 不見，但 GitHub repository 中也找不到 release 目錄。
+
+#### 原因
+
+`.build/` 與 `dist/` 被列入 `.gitignore`，因為它們是可重新產生的編譯產物，不應進入原始碼 repository。切換到無父歷史的乾淨分支時，這些未追蹤產物不屬於新分支內容，因此不能依賴 Git 保留。
+
+`.gitignore` 的作用是「不追蹤」，不是「備份」或「永久保留本機檔案」。
+
+#### 修正
+
+使用專案的打包腳本重新產生：
+
+```bash
+./scripts/package.sh
+```
+
+腳本會重新建立：
+
+- `dist/AIQuota.app`
+- `dist/AIQuota-macos.zip`
+
+#### 為什麼不把 `dist/` 提交回 Git
+
+二進位會增加 repository 體積，也可能帶入舊端點、舊 Bundle 設定、簽署資訊或不可重現的本機狀態。正式發布若需要保存 binary，應使用 GitHub Releases，而不是提交在 source tree。
+
+### 5.2 公開版移除硬編碼端點後無法連線
+
+#### 現象
+
+公開版移除內網 URL 後，App 顯示「尚未設定額度資料網址」或無法讀取 Collector。
+
+#### 原因
+
+實際內網 URL 不應提交到公開 repository，因此 `QuotaStore` 不再包含固定端點。App 改為依序讀取：
+
+1. `AIQUOTA_ENDPOINT` 環境變數。
+2. App 專屬 `UserDefaults` 的 `quotaEndpoint`。
+
+從 Finder 或 LaunchServices 開啟的 `.app` 通常不會繼承終端機 shell 的環境變數，因此 release App 應使用 `UserDefaults` 設定。
+
+#### 修正
+
+```bash
+defaults write com.example.aiquota quotaEndpoint -string "https://quota.example.invalid/quota.json"
+```
+
+這筆設定只保存在本機偏好設定，不會進入 Git 或 GitHub。
+
+### 5.3 顯示 `The Internet connection appears to be offline`
+
+#### 診斷過程
+
+檢查結果呈現一個重要差異：
+
+- 不使用 `--insecure` 的 curl 可正常取得 JSON。
+- 獨立 Foundation URLSession 測試得到 HTTP 200。
+- App 的系統網路日誌卻顯示 `Local network prohibited`，並回傳 `NSURLError -1009`。
+
+因此問題不是 Wi-Fi 真的離線、TLS 憑證失敗或 Collector 無回應，而是 macOS 對 GUI App 的本機網路隱私限制。
+
+#### 修正
+
+在 App bundle 的 `Info.plist` 加入：
+
+```xml
+<key>NSLocalNetworkUsageDescription</key>
+<string>AIQuota needs local network access to retrieve usage data from your configured quota service.</string>
+```
+
+使用者可在以下位置檢查：
+
+```text
+系統設定 → 隱私權與安全性 → 本機網路 → AIQuota
+```
+
+權限開啟並重新啟動新版 bundle 後，系統日誌確認 TLS 驗證成功、HTTP 200 且 request finished successfully。
+
+#### 為什麼 curl 成功不能證明 App 權限正常
+
+Terminal／curl 與獨立 App 是不同執行主體。macOS 會依 App 的 Bundle ID、用途宣告與 TCC 權限判斷是否允許本機網路，所以終端機可連線不代表另一個 GUI App 一定可連線。
+
+### 5.4 顯示 `The data couldn’t be read because it is missing`
+
+#### 現象
+
+加入本機網路權限後，錯誤從 offline 變成資料缺失。這個變化表示網路層已成功，失敗點移到 JSON decoding。
+
+即時 JSON 中出現以下有效資料：
+
+```json
+{
+  "remainingPercent": 100,
+  "resetsAt": null
+}
+```
+
+原本 `UsageWindow.resetsAt` 被定義為非 Optional `Date`，所以 JSONDecoder 遇到 `null` 會拋出 `valueNotFound`。
+
+#### 修正
+
+將模型改為：
+
+```swift
+let resetsAt: Date?
+```
+
+UI 只有在日期存在時才顯示「重置 MM/dd HH:mm」；日期為 `null` 時整段留空。這符合既有產品規則：沒有重置時間時，不應只顯示「重置」或破折號。
+
+### 5.5 靜態 JSON 回傳 `304` 與快取
+
+系統日誌曾顯示手動重新整理收到 HTTP 304。對每五分鐘更新的 quota JSON，App 應明確要求最新內容，避免 URLSession 的 validator／cache 狀態影響重新整理結果。
+
+修正方式：
+
+- `URLRequest.cachePolicy = .reloadIgnoringLocalCacheData`
+- 加入 `Cache-Control: no-cache`
+- 設定 15 秒 request timeout
+
+這不代表伺服器完全不能使用快取，而是每次 App 主動重新整理時都應完成重新驗證並取得可解碼內容。
+
+### 5.6 重置日期變成英文月份
+
+#### 現象
+
+使用 Swift `Date.formatted` 時，系統語系可能把日期顯示為 `Jul 22 at 04:58`。需求則是固定的純數字格式。
+
+#### 修正
+
+使用固定 DateFormatter：
+
+```swift
+formatter.locale = Locale(identifier: "en_US_POSIX")
+formatter.calendar = Calendar(identifier: .gregorian)
+formatter.dateFormat = "MM/dd HH:mm"
+```
+
+最終顯示：
+
+```text
+重置 07/22 04:50
+```
+
+`en_US_POSIX` 在這裡不是要顯示英文，而是避免使用者語系改寫固定格式；真正的輸出由 `MM/dd HH:mm` 決定。
+
+### 5.7 本次驗證順序
+
+1. 使用正常 TLS 驗證的 curl 取得 JSON。
+2. 使用 Foundation URLSession 確認 HTTP 200。
+3. 從 macOS unified log 分辨 `Local network prohibited` 與 TLS 錯誤。
+4. 加入本機網路用途宣告並重新打包。
+5. 比對即時 JSON 與 Swift Decodable 模型。
+6. 驗證 `resetsAt: null` 可成功解碼且 UI 不顯示重置文字。
+7. 驗證日期固定為 `MM/dd HH:mm`。
+8. 執行 debug／release build、`plutil` 與 ZIP 完整性檢查。
+
+---
+
 ## 其他實作決策
 
 ### 重新整理與動畫
@@ -255,7 +422,7 @@ App 啟動、每 300 秒、或使用者按下按鈕時讀取 JSON。`isRefreshin
 
 ### JSON 缺值與資料狀態
 
-真實格式可能含有 `five_hour: null` 或 `seven_day: null`。UI 對這些情況顯示 `—`，重置時間沒有值時留空。這避免將「來源沒有提供額度」錯誤表示成「剩餘 0%」。
+真實格式可能含有 `five_hour: null`、`seven_day: null`，或額度視窗存在但 `resetsAt: null`。UI 對缺少的額度視窗顯示 `—`，重置時間沒有值時留空。這避免將「來源沒有提供額度」錯誤表示成「剩餘 0%」，也避免 JSONDecoder 因合法的 `null` 值失敗。
 
 ### 版面與可讀性
 
@@ -281,7 +448,7 @@ App 啟動、每 300 秒、或使用者按下按鈕時讀取 JSON。`isRefreshin
 
 ---
 
-## 5. 重置時間格式與缺值修正
+## 6. 重置時間格式與缺值修正
 
 ### 問題
 
