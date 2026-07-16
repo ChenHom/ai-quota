@@ -8,6 +8,7 @@ AIQuota 是原生 SwiftUI macOS 選單列 App，讀取設定的 HTTPS `quota.jso
 
 - 點選選單列圖示開啟 300 pt 寬的無色原生玻璃面板。
 - 顯示各 Provider 的 5 小時、7 天額度、最後更新時間與重置時間。
+- 重置時間固定顯示為 `MM/dd HH:mm`（例如 `07/22 04:50`）。
 - 啟動、每 5 分鐘、手動重新整理時取得最新 JSON。
 - 重新整理圖示至少順時針旋轉 0.3 秒；請求完成後立即停止。
 - 右鍵選單提供「重新整理」及「結束 AIQuota」。
@@ -17,11 +18,11 @@ AIQuota 是原生 SwiftUI macOS 選單列 App，讀取設定的 HTTPS `quota.jso
 以 Xcode 開啟 `Package.swift`，選擇 **My Mac** 後執行；或在完成 Xcode 授權後使用：
 
 ```bash
-cd ~/ai-quota
+cd ~/code/ai-quota
 swift run
 ```
 
-首次使用前，系統必須信任 quota 站台使用的 mkcert 根憑證。
+首次使用前，系統必須信任 quota 站台使用的 mkcert 根憑證。若資料服務位於本機網路，請允許 AIQuota 存取本機網路；打包的 `Info.plist` 已包含用途說明。
 
 ## 設定資料端點
 
