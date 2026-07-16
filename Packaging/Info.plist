@@ -26,5 +26,7 @@
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 AIQuota contributors</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>AIQuota 需要存取本機網路上的額度資料服務。</string>
 </dict>
 </plist>
