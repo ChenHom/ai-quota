@@ -138,10 +138,22 @@ private struct UsageRow: View {
             Text(window.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—")
                 .frame(width: 38, alignment: .trailing)
                 .font(.caption.weight(.bold))
-            Text(window.map { "重置 \($0.resetsAt.formatted(.dateTime.month().day().hour().minute()))" } ?? "")
-                .frame(width: 116, alignment: .trailing)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            if let resetsAt = window?.resetsAt {
+                Text("重置 \(resetTime(resetsAt))")
+                    .frame(width: 116, alignment: .trailing)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Spacer().frame(width: 116)
+            }
         }
+    }
+
+    private func resetTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter.string(from: date)
     }
 }
