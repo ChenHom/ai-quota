@@ -277,3 +277,20 @@ App 啟動、每 300 秒、或使用者按下按鈕時讀取 JSON。`isRefreshin
 - 建立多螢幕、全螢幕 App、睡眠喚醒與斷網的手動驗收清單。
 - 正式發布前導入 Developer ID 簽署與 Apple notarization。
 - 若要支援 Intel Mac，建立 Universal Binary；檔案大小會增加。
+
+
+---
+
+## 5. 重置時間格式與缺值修正
+
+### 問題
+
+原先直接使用 SwiftUI 的系統日期格式，會依 macOS 語系顯示成英文月份（例如 `Jul 22 04:50`），也可能在 `resetsAt: null` 時仍顯示「重置」字樣。
+
+### 修正
+
+- 將 `UsageWindow.resetsAt` 定義為 `Date?`，保留來源的 `null` 語意。
+- UI 只有在有重置時間時才顯示「重置」。
+- 使用 POSIX locale 與 Gregorian calendar，固定格式為 `MM/dd HH:mm`，例如 `07/22 04:50`。
+
+固定格式避免使用者的系統語系改變欄位寬度與內容，也符合額度面板的既定顯示規格；代價是它不會跟隨本地化日期習慣，若未來支援多語系應改成依 locale 的格式策略。
