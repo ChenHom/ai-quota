@@ -25,5 +25,5 @@ struct QuotaWindows: Decodable {
 
 struct UsageWindow: Decodable {
     let remainingPercent: Double
-    let resetsAt: Date
+    let resetsAt: Date?
 }
