@@ -1,6 +1,6 @@
 # AIQuota 開發決策記錄
 
-最後更新：2026-07-16
+最後更新：2026-08-24
 
 ## 目標與目前架構
 
@@ -41,6 +41,7 @@ AIQuota macOS App（啟動、每 5 分鐘、手動重新整理）
 | 面板要貼近原生控制中心的玻璃 | 固定深色玻璃島（OSD 範式）+ 獨立暗化視窗 | 自動深淺適應只對內容稀疏的玻璃生效，資料密集卡片不可依賴 | 亮背景上仍為深色 |
 | 玻璃島不會自動深淺適應 | 拆掉 `GlassEffectContainer`、底層不墊任何同視窗圖層 | 玻璃只取樣視窗後方內容，墊底圖層會破壞適應 | 面板輪廓改由第二個視窗提供 |
 | `swift run` 讀不到額度網址 | 裸執行檔退回讀取打包版 UserDefaults 網域 | 沒有 bundle ID 時 `standard` 落在不同網域 | 發行 bundle ID 寫死於程式 |
+| JSON 新增 `resetCredits`（重置券張數與到期時間） | provider 名稱旁加 `+N` 徽章，摘要而非逐筆攤開 | 300 pt 面板不能因券數不定而長高 | 要點擊才能看到完整到期清單 |
 
 ---
 
@@ -509,3 +510,22 @@ App 啟動、每 300 秒、或使用者按下按鈕時讀取 JSON。`isRefreshin
 - `AIQUOTA_SHOW_PANEL=1`：啟動 0.5 秒後自動展開面板。
 - `AIQUOTA_PANEL_XY=x,y`：指定面板位置（Cocoa 座標；在 `orderFront` 前生效，因為玻璃在顯示當下取樣）。
 - `AIQUOTA_NODIM=1`：停用暗化視窗。
+
+---
+
+## 8. `resetCredits` 新欄位：徽章 + 摘要清單，而非逐筆卡片
+
+### 問題
+
+quota.json 新增 `resetCredits`（`availableCount`／`applicableAvailableCount`／`credits[]`），代表重置券張數與各自的授予、到期時間。面板固定 300 pt 寬，若逐筆攤開每張券的狀態、授予時間與到期時間，卡片高度會隨券數不固定成長，違背「不使用捲軸、依內容高度配置」的既定版面原則。
+
+### 修正
+
+- `ProviderQuota` 新增 `resetCredits: ResetCredits?`；`credits` 內每筆只解碼 `status`／`grantedAt`／`expiresAt`。
+- UI 只在 provider 名稱旁加一個 `+availableCount` 徽章；`resetCredits` 為 `nil` 或 `availableCount == 0` 時完全不顯示，不影響沒有重置券的 Provider。
+- 徽章只做摘要：滑鼠懸停顯示所有券裡最早到期的月／日（`到期：MM/dd`，不含時間，避免 tooltip 過長）；點擊才展開 popover，逐行列出每張券的到期時間（`MM/dd HH:mm`，與既有 `UsageRow` 重置時間格式一致）。
+- `applicableAvailableCount` 目前未使用：collector 端尚未明確定義它與 `availableCount` 的差異語意，先只採用 `availableCount` 當徽章數字，避免顯示一個團隊都不確定意涵的數字。
+
+### 取捨
+
+摘要式徽章讓面板寬度與高度維持穩定，但使用者要多一次點擊才能看到完整到期清單。若之後重置券變成常態關注重點（而非邊緣情況），可考慮併入 `5h`／`7d` 下面新增第三行，而不是藏進 hover／點擊互動。
