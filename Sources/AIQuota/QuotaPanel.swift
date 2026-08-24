@@ -130,6 +130,7 @@ private struct ResetCreditsBadge: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Taipei")
         formatter.dateFormat = "MM/dd HH:mm"
         return formatter
     }()
@@ -138,6 +139,7 @@ private struct ResetCreditsBadge: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Taipei")
         formatter.dateFormat = "MM/dd"
         return formatter
     }()

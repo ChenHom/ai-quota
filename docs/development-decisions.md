@@ -524,6 +524,7 @@ quota.json 新增 `resetCredits`（`availableCount`／`applicableAvailableCount`
 - `ProviderQuota` 新增 `resetCredits: ResetCredits?`；`credits` 內每筆只解碼 `status`／`grantedAt`／`expiresAt`。
 - UI 只在 provider 名稱旁加一個 `+availableCount` 徽章；`resetCredits` 為 `nil` 或 `availableCount == 0` 時完全不顯示，不影響沒有重置券的 Provider。
 - 徽章只做摘要：滑鼠懸停顯示所有券裡最早到期的月／日（`到期：MM/dd`，不含時間，避免 tooltip 過長）；點擊才展開 popover，逐行列出每張券的到期時間（`MM/dd HH:mm`，與既有 `UsageRow` 重置時間格式一致）。
+- 到期時間固定以 `Asia/Taipei`（+8）時區換算顯示，不隨裝置系統時區改變；`UsageRow` 既有的 `5h`／`7d` 重置時間目前仍沿用 `DateFormatter` 預設的裝置時區，尚未一併固定。
 - `applicableAvailableCount` 目前未使用：collector 端尚未明確定義它與 `availableCount` 的差異語意，先只採用 `availableCount` 當徽章數字，避免顯示一個團隊都不確定意涵的數字。
 
 ### 取捨
