@@ -11,6 +11,19 @@ struct ProviderQuota: Decodable {
     let status: String
     let lastSuccessAt: Date
     let windows: QuotaWindows
+    let resetCredits: ResetCredits?
+}
+
+struct ResetCredits: Decodable {
+    let availableCount: Int
+    let applicableAvailableCount: Int
+    let credits: [ResetCredit]
+}
+
+struct ResetCredit: Decodable {
+    let status: String
+    let grantedAt: Date
+    let expiresAt: Date?
 }
 
 struct QuotaWindows: Decodable {

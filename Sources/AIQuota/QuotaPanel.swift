@@ -91,6 +91,7 @@ private struct ProviderCard: View {
         VStack(spacing: 8) {
             HStack {
                 Text(name).font(.headline)
+                ResetCreditsBadge(resetCredits: quota?.resetCredits)
                 Spacer()
                 Text("最後更新：\(shortTime(quota?.lastSuccessAt))")
                     .font(.caption2)
@@ -118,6 +119,57 @@ private struct ProviderCard: View {
     private func shortTime(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private struct ResetCreditsBadge: View {
+    let resetCredits: ResetCredits?
+    @State private var showPopover = false
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter
+    }()
+
+    var body: some View {
+        if let resetCredits, resetCredits.availableCount > 0 {
+            Button {
+                showPopover = true
+            } label: {
+                Text("+\(resetCredits.availableCount)")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.25), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(nearestExpiryHint)
+            .popover(isPresented: $showPopover) {
+                creditsList(resetCredits)
+            }
+        }
+    }
+
+    private var nearestExpiryHint: String {
+        guard let nearest = resetCredits?.credits.compactMap(\.expiresAt).min() else {
+            return "重置券"
+        }
+        return "最近到期：\(Self.dateFormatter.string(from: nearest))"
+    }
+
+    private func creditsList(_ resetCredits: ResetCredits) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("重置券到期時間").font(.caption.weight(.semibold))
+            ForEach(Array(resetCredits.credits.enumerated()), id: \.offset) { _, credit in
+                Text(credit.expiresAt.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                    .font(.caption2)
+            }
+        }
+        .padding(10)
+        .frame(minWidth: 140, alignment: .leading)
     }
 }
 
