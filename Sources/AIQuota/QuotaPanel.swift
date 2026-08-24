@@ -134,6 +134,14 @@ private struct ResetCreditsBadge: View {
         return formatter
     }()
 
+    private static let hintDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "MM/dd"
+        return formatter
+    }()
+
     var body: some View {
         if let resetCredits, resetCredits.availableCount > 0 {
             Button {
@@ -157,7 +165,7 @@ private struct ResetCreditsBadge: View {
         guard let nearest = resetCredits?.credits.compactMap(\.expiresAt).min() else {
             return "重置券"
         }
-        return "最近到期：\(Self.dateFormatter.string(from: nearest))"
+        return "到期：\(Self.hintDateFormatter.string(from: nearest))"
     }
 
     private func creditsList(_ resetCredits: ResetCredits) -> some View {
