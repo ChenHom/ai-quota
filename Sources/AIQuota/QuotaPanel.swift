@@ -64,18 +64,9 @@ struct QuotaPanel: View {
         }
     }
 
-    private static let shortTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "Asia/Taipei")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
     private func time(_ date: Date?) -> String {
         guard let date else { return "—" }
-        return Self.shortTimeFormatter.string(from: date)
+        return date.formatted(date: .omitted, time: .shortened)
     }
 }
 
@@ -125,18 +116,9 @@ private struct ProviderCard: View {
 
     private var statusColor: Color { quota?.status == "ok" ? .green : .orange }
 
-    private static let shortTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "Asia/Taipei")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
     private func shortTime(_ date: Date?) -> String {
         guard let date else { return "—" }
-        return Self.shortTimeFormatter.string(from: date)
+        return date.formatted(date: .omitted, time: .shortened)
     }
 }
 
