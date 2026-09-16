@@ -93,8 +93,8 @@ private struct ProviderStackCard: View {
 
     /// 記帳號名稱而非索引：快照刷新後伺服器可能重排陣列，使用者看的要還是同一個帳號
     @State private var frontAccount: String?
-    /// 切換當下先把要離開的那張抬起來。少了這個反向的預備動作，
-    /// 位移只有幾個 px，兩張卡又長得像，切換會看不出來
+    /// 切換當下先把要離開的那張抬起來往後倒。少了這段，
+    /// 位移只有幾個 px、兩張卡又長得像，切換會看不出來
     @State private var liftingAccount: String?
 
     /// 後面那張往下露出的高度
@@ -105,6 +105,10 @@ private struct ProviderStackCard: View {
     private static let maxVisibleDepth = 2
     /// 預備動作抬起的高度
     private static let lift: CGFloat = 7
+    /// 牌底的卡片略微後仰，讓疊牌有厚度
+    private static let restTilt: Double = 10
+    /// 離開那張往後倒下去讓位。角度正負若與預期相反，把這兩個值一起變號
+    private static let liftTilt: Double = 50
 
     var body: some View {
         let ordered = stack.ordered(from: frontAccount)
@@ -126,6 +130,12 @@ private struct ProviderStackCard: View {
                     )
                     // 陰影只給最前面那張，交換時陰影跟著換手，深度差才看得出來
                     .shadow(color: .black.opacity(depth == 0 || isLifting ? 0.3 : 0), radius: 5, y: 2)
+                    // 繞 X 軸翻轉：離開那張往後倒，後面那張同時從後仰轉正到最前面
+                    .rotation3DEffect(
+                        .degrees(isLifting ? Self.liftTilt : (depth == 0 ? 0 : Self.restTilt)),
+                        axis: (x: 1, y: 0, z: 0),
+                        perspective: 0.5
+                    )
                     .offset(y: isLifting ? level * Self.peek - Self.lift : level * Self.peek)
                     .scaleEffect(isLifting ? 1.025 : 1 - level * Self.shrink)
                     .opacity(depth == 0 || isLifting ? 1 : 0.5)
