@@ -93,15 +93,19 @@ private struct ProviderStackCard: View {
 
     /// 記帳號名稱而非索引：快照刷新後伺服器可能重排陣列，使用者看的要還是同一個帳號
     @State private var frontAccount: String?
-    /// 正在被壓下去的那張
-    @State private var pressingAccount: String?
+    /// 整落牌正在被壓住
+    @State private var isPressing = false
 
-    /// 後面那張往下露出的高度。按下去時最前面那張正好被壓到這個位置
+    /// 後面那張往下露出的高度
     private static let peek: CGFloat = 9
     /// 每往後一層縮小的比例
     private static let shrink: CGFloat = 0.045
     /// 疊超過兩層就不再往下推，避免越堆越糊
     private static let maxVisibleDepth = 2
+    /// 按下去時整落牌往中間收斂的位置（0 = 最前面，1 = 牌底那張）。
+    /// 所有卡片收到同一個位置、大小與明度，誰在前誰在後完全看不出來——
+    /// 交換就藏在這一刻，這是整個做法的關鍵
+    private static let pressLevel: CGFloat = 0.5
 
     var body: some View {
         let ordered = stack.ordered(from: frontAccount)
@@ -112,8 +116,9 @@ private struct ProviderStackCard: View {
                              accountCount: 0, accountIndex: 0, activeIndex: 0)
             } else {
                 ForEach(Array(ordered.enumerated()), id: \.element.account) { depth, quota in
-                    let isPressing = quota.account == pressingAccount
-                    let level = CGFloat(min(depth, Self.maxVisibleDepth))
+                    let level = isPressing
+                        ? Self.pressLevel
+                        : CGFloat(min(depth, Self.maxVisibleDepth))
                     ProviderCard(
                         displayName: stack.displayName,
                         quota: quota,
@@ -122,13 +127,12 @@ private struct ProviderStackCard: View {
                         activeIndex: stack.index(of: frontAccount)
                     )
                     // 陰影只給最前面那張；壓下去時收掉，卡片貼近檯面影子本來就該變小
-                    .shadow(color: .black.opacity(shadowOpacity(depth: depth, isPressing: isPressing)),
-                            radius: isPressing ? 2 : 5, y: isPressing ? 1 : 2)
-                    // 壓到底時兩張卡的位置與大小幾乎一樣，誰在前誰在後看不出來——
-                    // 交換就藏在這一刻，這是整個做法的關鍵
-                    .offset(y: isPressing ? Self.peek : level * Self.peek)
-                    .scaleEffect(isPressing ? 1 - Self.shrink : 1 - level * Self.shrink)
-                    .opacity(depth == 0 || isPressing ? 1 : 0.5)
+                    .shadow(color: .black.opacity(shadowOpacity(depth: depth)),
+                            radius: isPressing ? 2 : 5,
+                            y: isPressing ? 1 : 2)
+                    .offset(y: level * Self.peek)
+                    .scaleEffect(1 - level * Self.shrink)
+                    .opacity(isPressing ? 0.8 : (depth == 0 ? 1 : 0.5))
                     .zIndex(Double(ordered.count - depth))
                 }
             }
@@ -142,26 +146,25 @@ private struct ProviderStackCard: View {
         .accessibilityHint(stack.isMultiAccount ? "切換下一個帳號" : "")
     }
 
-    private func shadowOpacity(depth: Int, isPressing: Bool) -> Double {
+    private func shadowOpacity(depth: Int) -> Double {
         if isPressing { return 0.18 }
         return depth == 0 ? 0.3 : 0
     }
 
     private func advance() {
-        // pressingAccount 非 nil 表示前一次切換還在動，忽略連點
-        guard stack.isMultiAccount, pressingAccount == nil else { return }
-        let leaving = stack.ordered(from: frontAccount).first?.account
+        // isPressing 表示前一次切換還在動，忽略連點
+        guard stack.isMultiAccount, !isPressing else { return }
         let next = stack.account(after: frontAccount)
 
         // 加速壓下去，像被指頭按住
-        withAnimation(.easeIn(duration: 0.13)) { pressingAccount = leaving }
+        withAnimation(.easeIn(duration: 0.13)) { isPressing = true }
         Task { @MainActor in
             // 兩段必須跨 runloop：同一個 tick 內設完再清掉的話，壓下去那段不會被畫出來
             try? await Task.sleep(for: .milliseconds(130))
             // 阻尼壓低才彈得出來
             withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) {
                 frontAccount = next
-                pressingAccount = nil
+                isPressing = false
             }
         }
     }
