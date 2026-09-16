@@ -111,7 +111,8 @@ private struct ProviderStackCard: View {
 
         ZStack {
             if ordered.isEmpty {
-                ProviderCard(displayName: stack.displayName, quota: nil, accountCount: 0, activeIndex: 0)
+                ProviderCard(displayName: stack.displayName, quota: nil,
+                             accountCount: 0, accountIndex: 0, activeIndex: 0)
             } else {
                 ForEach(Array(ordered.enumerated()), id: \.element.account) { depth, quota in
                     let isLifting = quota.account == liftingAccount
@@ -120,6 +121,7 @@ private struct ProviderStackCard: View {
                         displayName: stack.displayName,
                         quota: quota,
                         accountCount: stack.accounts.count,
+                        accountIndex: stack.index(of: quota.account),
                         activeIndex: stack.index(of: frontAccount)
                     )
                     // 陰影只給最前面那張，交換時陰影跟著換手，深度差才看得出來
@@ -159,10 +161,25 @@ private struct ProviderStackCard: View {
 }
 
 private struct ProviderCard: View {
+    /// 多帳號時用底色區分是哪一個帳號。第一個帳號（一般是 main）不上色，
+    /// 維持與單帳號卡片相同的外觀；色相避開狀態膠囊的綠／橘與重置券的藍
+    private static let accountTints: [Color] = [
+        Color(red: 0.58, green: 0.47, blue: 1.00),   // 紫
+        Color(red: 0.27, green: 0.78, blue: 0.78),   // 青
+        Color(red: 1.00, green: 0.47, blue: 0.74)    // 粉
+    ]
+
     let displayName: String
     let quota: ProviderQuota?
     let accountCount: Int
+    /// 這張卡是 provider 的第幾個帳號，決定底色
+    let accountIndex: Int
     let activeIndex: Int
+
+    private var tint: Color? {
+        guard accountCount > 1, accountIndex > 0 else { return nil }
+        return Self.accountTints[(accountIndex - 1) % Self.accountTints.count]
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -187,7 +204,7 @@ private struct ProviderCard: View {
             UsageRow(label: "7d", window: quota?.windows.sevenDay)
         }
         .padding(12)
-        .glassIsland(cornerRadius: 14)
+        .glassIsland(cornerRadius: 14, tint: tint)
     }
 
     private var statusLabel: String {
@@ -284,11 +301,20 @@ private struct ResetCreditsBadge: View {
 }
 
 private extension View {
+    /// `tint` 是多帳號卡片的底色。兩條路徑的濃度分開給：玻璃會自己再做一次處理，
+    /// 直接沿用 fallback 的值會太淡（數值待實機微調）
     @ViewBuilder
-    func glassIsland(cornerRadius: CGFloat) -> some View {
+    func glassIsland(cornerRadius: CGFloat, tint: Color? = nil) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if #available(macOS 26.0, *) {
-            glassEffect(.regular, in: shape)
+            if let tint {
+                glassEffect(.regular.tint(tint.opacity(0.5)), in: shape)
+            } else {
+                glassEffect(.regular, in: shape)
+            }
+        } else if let tint {
+            background(tint.opacity(0.22), in: shape)
+                .background(.quaternary, in: shape)
         } else {
             background(.quaternary, in: shape)
         }
