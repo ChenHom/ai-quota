@@ -153,8 +153,9 @@ private struct ProviderStackCard: View {
 
     private func advance() {
         // isPressing 表示前一次切換還在動，忽略連點
-        guard stack.isMultiAccount, !isPressing else { return }
-        let next = stack.account(after: frontAccount)
+        guard !isPressing else { return }
+        // 單帳號沒有下一張可換，但一樣要有下壓回饋，不然點下去像沒反應
+        let next = stack.isMultiAccount ? stack.account(after: frontAccount) : nil
 
         // 加速壓下去，像被指頭按住
         withAnimation(.easeIn(duration: 0.13)) { isPressing = true }
@@ -163,7 +164,7 @@ private struct ProviderStackCard: View {
             try? await Task.sleep(for: .milliseconds(130))
             // 阻尼壓低才彈得出來
             withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) {
-                frontAccount = next
+                if let next { frontAccount = next }
                 isPressing = false
             }
         }
@@ -238,12 +239,15 @@ private struct AccountDots: View {
     var body: some View {
         HStack(spacing: 3) {
             ForEach(0..<count, id: \.self) { index in
+                // 只靠明暗差在 4pt 的小圓點上看不出來（實測），目前這顆改成拉長的膠囊：
+                // 形狀差在任何尺寸都讀得到。寬度會跟著切換的 spring 一起變形
+                let isActive = index == activeIndex
+                let style: HierarchicalShapeStyle = isActive ? .primary : .quaternary
                 // 形狀比照 UsageBar 用 .background(_, in:)：獨立的 Shape view
                 // 會讓玻璃島的自動深淺適應失效（實測）
-                let style: HierarchicalShapeStyle = index == activeIndex ? .primary : .tertiary
                 Color.clear
-                    .frame(width: 4, height: 4)
-                    .background(style, in: Circle())
+                    .frame(width: isActive ? 10 : 4, height: 4)
+                    .background(style, in: Capsule())
             }
         }
     }
