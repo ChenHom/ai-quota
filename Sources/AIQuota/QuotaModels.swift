@@ -53,30 +53,50 @@ struct ProviderQuota: Decodable {
     let resetCredits: ResetCredits?
 }
 
-/// 攤平後的一列：provider 依 `ProviderKind` 固定順序，帳號依伺服器給的順序（`main` 在最前）
-struct ProviderRow: Identifiable {
+/// 一個 provider 一落牌。面板固定三張卡片，多帳號時疊在同一個位置、點擊切換
+struct ProviderStack: Identifiable {
     let id: String
     let displayName: String
-    let quota: ProviderQuota?
+    let accounts: [ProviderQuota]
 
-    /// 尚未取得快照時的佔位列，維持「三張卡片顯示暫無資料」的原本行為
-    static let placeholders: [ProviderRow] = ProviderKind.allCases.map {
-        ProviderRow(id: $0.rawValue, displayName: $0.displayName, quota: nil)
+    var isMultiAccount: Bool { accounts.count > 1 }
+
+    /// 尚未取得快照時的佔位，維持「三張卡片顯示暫無資料」的原本行為。
+    /// id 與真實資料相同，快照到達時 SwiftUI 才不會把卡片視為新元素而重置切換狀態
+    static let placeholders: [ProviderStack] = ProviderKind.allCases.map {
+        ProviderStack(id: $0.rawValue, displayName: $0.displayName, accounts: [])
+    }
+
+    /// 以 `frontAccount` 為首的循環排列。帳號不存在（快照換過、該帳號已移除）時退回原順序，
+    /// 也就是 `main` 在最前
+    func ordered(from frontAccount: String?) -> [ProviderQuota] {
+        guard isMultiAccount,
+              let frontAccount,
+              let start = accounts.firstIndex(where: { $0.account == frontAccount })
+        else { return accounts }
+        return Array(accounts[start...]) + Array(accounts[..<start])
+    }
+
+    /// 點擊後要切到的下一個帳號
+    func account(after frontAccount: String?) -> String? {
+        let order = ordered(from: frontAccount)
+        guard order.count > 1 else { return nil }
+        return order[1].account
+    }
+
+    /// `frontAccount` 在 `accounts` 裡的位置，供指示圓點標示第幾張
+    func index(of frontAccount: String?) -> Int {
+        guard let frontAccount,
+              let index = accounts.firstIndex(where: { $0.account == frontAccount })
+        else { return 0 }
+        return index
     }
 }
 
 extension QuotaResponse {
-    var providerRows: [ProviderRow] {
-        ProviderKind.allCases.flatMap { kind in
-            providers[kind].map { quota in
-                ProviderRow(
-                    id: "\(kind.rawValue)/\(quota.account)",
-                    displayName: quota.account == ProviderQuota.defaultAccount
-                        ? kind.displayName
-                        : "\(kind.displayName) (\(quota.account))",
-                    quota: quota
-                )
-            }
+    var providerStacks: [ProviderStack] {
+        ProviderKind.allCases.map { kind in
+            ProviderStack(id: kind.rawValue, displayName: kind.displayName, accounts: providers[kind])
         }
     }
 }
