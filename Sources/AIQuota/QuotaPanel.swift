@@ -126,10 +126,9 @@ private struct ProviderStackCard: View {
                         accountIndex: stack.index(of: quota.account),
                         activeIndex: stack.index(of: frontAccount)
                     )
-                    // 陰影只給最前面那張；壓下去時收掉，卡片貼近檯面影子本來就該變小
-                    .shadow(color: .black.opacity(shadowOpacity(depth: depth)),
-                            radius: isPressing ? 2 : 5,
-                            y: isPressing ? 1 : 2)
+                    // 不要加 .shadow：套在 glassEffect 上會先把玻璃光柵化到離屏圖層，
+                    // 影子就按外框矩形畫，變成一個黑方塊而不是跟著圓角（實測）。
+                    // 深度靠位移、縮放與明度表示就夠了
                     .offset(y: level * Self.peek)
                     .scaleEffect(1 - level * Self.shrink)
                     .opacity(isPressing ? 0.8 : (depth == 0 ? 1 : 0.5))
@@ -144,11 +143,6 @@ private struct ProviderStackCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(stack.isMultiAccount ? AccessibilityTraits.isButton : [])
         .accessibilityHint(stack.isMultiAccount ? "切換下一個帳號" : "")
-    }
-
-    private func shadowOpacity(depth: Int) -> Double {
-        if isPressing { return 0.18 }
-        return depth == 0 ? 0.3 : 0
     }
 
     private func advance() {
