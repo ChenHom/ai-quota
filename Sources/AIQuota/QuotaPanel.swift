@@ -3,7 +3,10 @@ import SwiftUI
 struct QuotaPanel: View {
     @ObservedObject var store: QuotaStore
 
-    private let providers = [("codex", "Codex"), ("claude", "Claude"), ("agy", "AGY")]
+    /// 每個 provider 一落牌；還沒有快照時退回三張佔位卡片
+    private var stacks: [ProviderStack] {
+        store.quota?.providerStacks ?? ProviderStack.placeholders
+    }
 
     var body: some View {
         Group {
@@ -38,8 +41,8 @@ struct QuotaPanel: View {
                     .padding(.vertical, 6)
                     .glassIsland(cornerRadius: 10)
             }
-            ForEach(providers, id: \.0) { key, name in
-                ProviderCard(name: name, quota: store.quota?.providers[key])
+            ForEach(stacks) { stack in
+                ProviderStackCard(stack: stack)
             }
         }
     }
@@ -83,17 +86,117 @@ private struct RefreshIcon: View {
     }
 }
 
+/// 多帳號 provider 疊成一落牌：點擊把最前面那張壓下去，彈回來時已經換成下一個帳號。
+/// 單帳號時退化成一張普通卡片，外觀與行為都跟以前一樣
+private struct ProviderStackCard: View {
+    let stack: ProviderStack
+
+    /// 記帳號名稱而非索引：快照刷新後伺服器可能重排陣列，使用者看的要還是同一個帳號
+    @State private var frontAccount: String?
+    /// 整落牌正在被壓住
+    @State private var isPressing = false
+
+    /// 後面那張往下露出的高度
+    private static let peek: CGFloat = 9
+    /// 每往後一層縮小的比例
+    private static let shrink: CGFloat = 0.045
+    /// 疊超過兩層就不再往下推，避免越堆越糊
+    private static let maxVisibleDepth = 2
+    /// 按下去時整落牌往中間收斂的位置（0 = 最前面，1 = 牌底那張）。
+    /// 所有卡片收到同一個位置、大小與明度，誰在前誰在後完全看不出來——
+    /// 交換就藏在這一刻，這是整個做法的關鍵
+    private static let pressLevel: CGFloat = 0.5
+
+    var body: some View {
+        let ordered = stack.ordered(from: frontAccount)
+
+        ZStack {
+            if ordered.isEmpty {
+                ProviderCard(displayName: stack.displayName, quota: nil,
+                             accountCount: 0, accountIndex: 0, activeIndex: 0)
+            } else {
+                ForEach(Array(ordered.enumerated()), id: \.element.account) { depth, quota in
+                    let level = isPressing
+                        ? Self.pressLevel
+                        : CGFloat(min(depth, Self.maxVisibleDepth))
+                    ProviderCard(
+                        displayName: stack.displayName,
+                        quota: quota,
+                        accountCount: stack.accounts.count,
+                        accountIndex: stack.index(of: quota.account),
+                        activeIndex: stack.index(of: frontAccount)
+                    )
+                    // 不要加 .shadow：套在 glassEffect 上會先把玻璃光柵化到離屏圖層，
+                    // 影子就按外框矩形畫，變成一個黑方塊而不是跟著圓角（實測）。
+                    // 深度靠位移、縮放與明度表示就夠了
+                    .offset(y: level * Self.peek)
+                    .scaleEffect(1 - level * Self.shrink)
+                    .opacity(isPressing ? 0.8 : (depth == 0 ? 1 : 0.5))
+                    .zIndex(Double(ordered.count - depth))
+                }
+            }
+        }
+        // 露出的那一角要留空間，否則會被下一張卡蓋掉
+        .padding(.bottom, stack.isMultiAccount ? Self.peek : 0)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: advance)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(stack.isMultiAccount ? AccessibilityTraits.isButton : [])
+        .accessibilityHint(stack.isMultiAccount ? "切換下一個帳號" : "")
+    }
+
+    private func advance() {
+        // isPressing 表示前一次切換還在動，忽略連點
+        guard !isPressing else { return }
+        // 單帳號沒有下一張可換，但一樣要有下壓回饋，不然點下去像沒反應
+        let next = stack.isMultiAccount ? stack.account(after: frontAccount) : nil
+
+        // 加速壓下去，像被指頭按住
+        withAnimation(.easeIn(duration: 0.13)) { isPressing = true }
+        Task { @MainActor in
+            // 兩段必須跨 runloop：同一個 tick 內設完再清掉的話，壓下去那段不會被畫出來
+            try? await Task.sleep(for: .milliseconds(130))
+            // 阻尼壓低才彈得出來
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) {
+                if let next { frontAccount = next }
+                isPressing = false
+            }
+        }
+    }
+}
+
 private struct ProviderCard: View {
-    let name: String
+    /// 多帳號時用底色區分是哪一個帳號。第一個帳號（一般是 main）不上色，
+    /// 維持與單帳號卡片相同的外觀；色相避開狀態膠囊的綠／橘與重置券的藍
+    private static let accountTints: [Color] = [
+        Color(red: 0.58, green: 0.47, blue: 1.00),   // 紫
+        Color(red: 0.27, green: 0.78, blue: 0.78),   // 青
+        Color(red: 1.00, green: 0.47, blue: 0.74)    // 粉
+    ]
+
+    let displayName: String
     let quota: ProviderQuota?
+    let accountCount: Int
+    /// 這張卡是 provider 的第幾個帳號，決定底色
+    let accountIndex: Int
+    let activeIndex: Int
+
+    private var tint: Color? {
+        guard accountCount > 1, accountIndex > 0 else { return nil }
+        return Self.accountTints[(accountIndex - 1) % Self.accountTints.count]
+    }
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                Text(name).font(.headline)
+                Text(displayName).font(.headline)
+                if accountCount > 1 {
+                    AccountDots(count: accountCount, activeIndex: activeIndex)
+                }
                 ResetCreditsBadge(resetCredits: quota?.resetCredits)
                 Spacer()
-                Text("最後更新：\(shortTime(quota?.lastSuccessAt))")
+                // 「最後更新：」前綴拿掉只留時間——面板頂端的「最後同步」已經交代時間的意思
+                Text(shortTime(quota?.lastSuccessAt ?? nil))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(statusLabel)
@@ -106,7 +209,7 @@ private struct ProviderCard: View {
             UsageRow(label: "7d", window: quota?.windows.sevenDay)
         }
         .padding(12)
-        .glassIsland(cornerRadius: 14)
+        .glassIsland(cornerRadius: 14, tint: tint)
     }
 
     private var statusLabel: String {
@@ -119,6 +222,28 @@ private struct ProviderCard: View {
     private func shortTime(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+/// 目前看的是第幾個帳號
+private struct AccountDots: View {
+    let count: Int
+    let activeIndex: Int
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<count, id: \.self) { index in
+                // 只靠明暗差在 4pt 的小圓點上看不出來（實測），目前這顆改成拉長的膠囊：
+                // 形狀差在任何尺寸都讀得到。寬度會跟著切換的 spring 一起變形
+                let isActive = index == activeIndex
+                let style: HierarchicalShapeStyle = isActive ? .primary : .quaternary
+                // 形狀比照 UsageBar 用 .background(_, in:)：獨立的 Shape view
+                // 會讓玻璃島的自動深淺適應失效（實測）
+                Color.clear
+                    .frame(width: isActive ? 10 : 4, height: 4)
+                    .background(style, in: Capsule())
+            }
+        }
     }
 }
 
@@ -184,11 +309,20 @@ private struct ResetCreditsBadge: View {
 }
 
 private extension View {
+    /// `tint` 是多帳號卡片的底色。兩條路徑的濃度分開給：玻璃會自己再做一次處理，
+    /// 直接沿用 fallback 的值會太淡（數值待實機微調）
     @ViewBuilder
-    func glassIsland(cornerRadius: CGFloat) -> some View {
+    func glassIsland(cornerRadius: CGFloat, tint: Color? = nil) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if #available(macOS 26.0, *) {
-            glassEffect(.regular, in: shape)
+            if let tint {
+                glassEffect(.regular.tint(tint.opacity(0.5)), in: shape)
+            } else {
+                glassEffect(.regular, in: shape)
+            }
+        } else if let tint {
+            background(tint.opacity(0.22), in: shape)
+                .background(.quaternary, in: shape)
         } else {
             background(.quaternary, in: shape)
         }
