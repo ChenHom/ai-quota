@@ -52,6 +52,9 @@ final class QuotaStore: ObservableObject {
                 return date
             }
             let decodedQuota = try decoder.decode(QuotaResponse.self, from: data)
+            guard decodedQuota.schemaVersion == QuotaResponse.supportedSchemaVersion else {
+                throw QuotaConfigurationError.unsupportedSchema(decodedQuota.schemaVersion)
+            }
             await waitForMinimumRefreshDuration(since: startedAt)
             quota = decodedQuota
             lastRefreshAt = .now
@@ -70,8 +73,14 @@ final class QuotaStore: ObservableObject {
 
 private enum QuotaConfigurationError: LocalizedError {
     case missingEndpoint
+    case unsupportedSchema(Int)
 
     var errorDescription: String? {
-        "尚未設定額度資料網址"
+        switch self {
+        case .missingEndpoint:
+            return "尚未設定額度資料網址"
+        case .unsupportedSchema(let version):
+            return "資料格式版本不支援（收到 v\(version)，需要 v\(QuotaResponse.supportedSchemaVersion)）"
+        }
     }
 }

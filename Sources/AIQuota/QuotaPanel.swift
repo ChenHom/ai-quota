@@ -3,7 +3,10 @@ import SwiftUI
 struct QuotaPanel: View {
     @ObservedObject var store: QuotaStore
 
-    private let providers = [("codex", "Codex"), ("claude", "Claude"), ("agy", "AGY")]
+    /// 每個帳號一列；還沒有快照時退回三張佔位卡片
+    private var rows: [ProviderRow] {
+        store.quota?.providerRows ?? ProviderRow.placeholders
+    }
 
     var body: some View {
         Group {
@@ -38,8 +41,8 @@ struct QuotaPanel: View {
                     .padding(.vertical, 6)
                     .glassIsland(cornerRadius: 10)
             }
-            ForEach(providers, id: \.0) { key, name in
-                ProviderCard(name: name, quota: store.quota?.providers[key])
+            ForEach(rows) { row in
+                ProviderCard(name: row.displayName, quota: row.quota)
             }
         }
     }
@@ -93,7 +96,7 @@ private struct ProviderCard: View {
                 Text(name).font(.headline)
                 ResetCreditsBadge(resetCredits: quota?.resetCredits)
                 Spacer()
-                Text("最後更新：\(shortTime(quota?.lastSuccessAt))")
+                Text("最後更新：\(shortTime(quota?.lastSuccessAt ?? nil))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(statusLabel)
