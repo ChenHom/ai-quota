@@ -168,16 +168,12 @@ private struct ProviderCard: View {
         VStack(spacing: 8) {
             HStack {
                 Text(displayName).font(.headline)
-                if accountCount > 1, let quota {
-                    Text("· \(quota.account)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if accountCount > 1 {
                     AccountDots(count: accountCount, activeIndex: activeIndex)
                 }
                 ResetCreditsBadge(resetCredits: quota?.resetCredits)
                 Spacer()
-                // 「最後更新：」前綴拿掉只留時間——面板頂端的「最後同步」已經交代時間的意思，
-                // 省下的寬度才塞得下多帳號的帳號名與指示點
+                // 「最後更新：」前綴拿掉只留時間——面板頂端的「最後同步」已經交代時間的意思
                 Text(shortTime(quota?.lastSuccessAt ?? nil))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
