@@ -95,6 +95,8 @@ private struct ProviderStackCard: View {
     @State private var frontAccount: String?
     /// 整落牌正在被壓住
     @State private var isPressing = false
+    /// 按下去的時刻，用來算還要不要補足 pressDuration
+    @State private var pressStartedAt: Date?
 
     /// 後面那張往下露出的高度
     private static let peek: CGFloat = 9
@@ -102,15 +104,36 @@ private struct ProviderStackCard: View {
     private static let shrink: CGFloat = 0.045
     /// 疊超過兩層就不再往下推，避免越堆越糊
     private static let maxVisibleDepth = 2
+    /// 壓下去的時間。放開得太快時會補足剩下的，確保交換仍然被壓到底那一刻蓋住
+    private static let pressDuration: TimeInterval = 0.13
     /// 按下去時整落牌往中間收斂的位置（0 = 最前面，1 = 牌底那張）。
     /// 所有卡片收到同一個位置、大小與明度，誰在前誰在後完全看不出來——
     /// 交換就藏在這一刻，這是整個做法的關鍵
     private static let pressLevel: CGFloat = 0.5
 
     var body: some View {
+        Button {
+            // 切換走 isPressed 轉 false，這裡不做事：Button 的 action 比
+            // isPressed 轉 false 更早觸發，放在這裡會比回彈早一步（實測）
+        } label: {
+            cardStack
+        }
+        .buttonStyle(CardPressStyle { pressed in
+            if pressed { press() } else { release() }
+        })
+        .accessibilityElement(children: .combine)
+        .accessibilityAction {
+            guard let next = stack.account(after: frontAccount) else { return }
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) { frontAccount = next }
+        }
+        .accessibilityAddTraits(stack.isMultiAccount ? AccessibilityTraits.isButton : [])
+        .accessibilityHint(stack.isMultiAccount ? "切換下一個帳號" : "")
+    }
+
+    private var cardStack: some View {
         let ordered = stack.ordered(from: frontAccount)
 
-        ZStack {
+        return ZStack {
             if ordered.isEmpty {
                 ProviderCard(displayName: stack.displayName, quota: nil,
                              accountCount: 0, accountIndex: 0, activeIndex: 0)
@@ -139,29 +162,60 @@ private struct ProviderStackCard: View {
         // 露出的那一角要留空間，否則會被下一張卡蓋掉
         .padding(.bottom, stack.isMultiAccount ? Self.peek : 0)
         .contentShape(Rectangle())
-        .onTapGesture(perform: advance)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(stack.isMultiAccount ? AccessibilityTraits.isButton : [])
-        .accessibilityHint(stack.isMultiAccount ? "切換下一個帳號" : "")
     }
 
-    private func advance() {
-        // isPressing 表示前一次切換還在動，忽略連點
+    /// 按下：整落牌沉下去
+    private func press() {
+        // DragGesture 的 onChanged 會連續觸發，只認第一次
         guard !isPressing else { return }
-        // 單帳號沒有下一張可換，但一樣要有下壓回饋，不然點下去像沒反應
-        let next = stack.isMultiAccount ? stack.account(after: frontAccount) : nil
-
+        pressStartedAt = .now
         // 加速壓下去，像被指頭按住
-        withAnimation(.easeIn(duration: 0.13)) { isPressing = true }
+        withAnimation(.easeIn(duration: Self.pressDuration)) { isPressing = true }
+    }
+
+    /// 放開：彈回來，順便換帳號
+    private func release() {
+        guard isPressing else { return }
+        let next = stack.account(after: frontAccount)
+
+        // 點得太快時沉下去還沒走完，先補足剩下的時間。
+        // 沒補的話兩張卡還沒收斂到同一個位置就交換，會被看見
+        let elapsed = pressStartedAt.map { Date.now.timeIntervalSince($0) } ?? Self.pressDuration
+        let remaining = Self.pressDuration - elapsed
+        guard remaining > 0 else { return settle(next: next) }
+
         Task { @MainActor in
-            // 兩段必須跨 runloop：同一個 tick 內設完再清掉的話，壓下去那段不會被畫出來
-            try? await Task.sleep(for: .milliseconds(130))
-            // 阻尼壓低才彈得出來
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) {
-                if let next { frontAccount = next }
-                isPressing = false
-            }
+            try? await Task.sleep(for: .seconds(remaining))
+            settle(next: next)
         }
+    }
+
+    private func settle(next: String?) {
+        // 阻尼壓低才彈得出來
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.60)) {
+            if let next { frontAccount = next }
+            isPressing = false
+        }
+        pressStartedAt = nil
+    }
+}
+
+/// 卡片的按壓狀態，用 ButtonStyle 的 `configuration.isPressed` 取得。
+///
+/// 前提是 `FirstMouseHostingView` 的 acceptsFirstMouse——少了它，這裡
+/// 收不到 isPressed（實測，而且換成 DragGesture 或 LongPressGesture 也一樣
+/// 收不到，因為卡住的是視窗層級而不是手勢寫法）。
+///
+/// 注意順序：Button 的 action 比 isPressed 轉 false 更早觸發（實測），
+/// 所以切換要走 isPressed，不能放進 action
+private struct CardPressStyle: ButtonStyle {
+    let onPressChange: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, pressed in
+                onPressChange(pressed)
+            }
     }
 }
 

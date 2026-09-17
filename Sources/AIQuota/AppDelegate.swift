@@ -1,6 +1,26 @@
 import AppKit
 import SwiftUI
 
+/// AIQuota 是 LSUIElement，app 永遠不會 active；面板又是 .nonactivatingPanel
+/// 且只用 orderFrontRegardless 顯示，所以視窗永遠不是 key。在那個狀態下
+/// AppKit 預設不把完整的 mouse-down 追蹤交給 view：點擊照常送達（按鈕的
+/// action 會觸發），但按住期間的狀態拿不到。
+///
+/// 實測到的分界很乾淨——靠 mouse up 的一律有效（onTapGesture、Button 的
+/// action），需要 mouse down 追蹤的一律無效（ButtonStyle 的 isPressed、
+/// 各種手勢）。acceptsFirstMouse 回 true 就會把按下那一刻也交給 view。
+///
+/// 這個 override 是整個按壓回饋的前提：拿掉它，QuotaPanel 那邊不管換哪一種
+/// 寫法都不會有反應
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    required init(rootView: Content) { super.init(rootView: rootView) }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = QuotaStore()
@@ -8,11 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
 
-    private lazy var hostingController: NSHostingController<QuotaPanel> = {
-        let controller = NSHostingController(rootView: QuotaPanel(store: store))
-        controller.view.wantsLayer = true
-        controller.view.layer?.backgroundColor = NSColor.clear.cgColor
-        return controller
+    private lazy var hostingView: FirstMouseHostingView<QuotaPanel> = {
+        let view = FirstMouseHostingView(rootView: QuotaPanel(store: store))
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        return view
     }()
 
     private lazy var panel: NSPanel = {
@@ -22,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.contentViewController = hostingController
+        panel.contentView = hostingView
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -113,8 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.appearance = button.effectiveAppearance
         }
 
-        hostingController.view.layoutSubtreeIfNeeded()
-        let fittingHeight = max(hostingController.view.fittingSize.height, 1)
+        hostingView.layoutSubtreeIfNeeded()
+        let fittingHeight = max(hostingView.fittingSize.height, 1)
         panel.setContentSize(NSSize(width: 300, height: fittingHeight))
 
         let buttonRect = statusWindow.convertToScreen(button.convert(button.bounds, to: nil))
