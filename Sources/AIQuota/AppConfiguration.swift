@@ -11,6 +11,32 @@ enum AppConfiguration {
         return UserDefaults(suiteName: releaseBundleID)
     }
 
+    /// 面板上顯示的建置標示，例如 `0.1.0 (74b90e9)`。後綴的 `+` 表示打包時
+    /// 工作區還有未提交的改動。打包版才有值——裸執行檔沒有 bundle，讀不到
+    static var buildLabel: String {
+        guard let revision = infoValue("AIQuotaGitRevision") else { return "開發版" }
+        return "\(shortVersion) (\(revision))"
+    }
+
+    /// 滑鼠停留時顯示的完整資訊
+    static var buildDetail: String {
+        guard let revision = infoValue("AIQuotaGitRevision") else {
+            return "開發版：未經打包，無法判斷來源 commit"
+        }
+        let builtAt = infoValue("AIQuotaBuiltAt").map { "，建置於 \($0)" } ?? ""
+        return "版本 \(shortVersion)（\(revision)）\(builtAt)"
+    }
+
+    private static var shortVersion: String {
+        infoValue("CFBundleShortVersionString") ?? "0.0.0"
+    }
+
+    private static func infoValue(_ key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              !value.isEmpty else { return nil }
+        return value
+    }
+
     static var quotaEndpoint: URL? {
         let rawValue = ProcessInfo.processInfo.environment["AIQUOTA_ENDPOINT"]
             ?? UserDefaults.standard.string(forKey: endpointKey)

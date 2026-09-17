@@ -48,7 +48,7 @@ struct QuotaPanel: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AI USAGE")
                     .font(.caption2.weight(.bold))
@@ -57,13 +57,23 @@ struct QuotaPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button { Task { await store.refresh() } } label: {
-                RefreshIcon(isRefreshing: store.isRefreshing)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 3) {
+                Button { Task { await store.refresh() } } label: {
+                    RefreshIcon(isRefreshing: store.isRefreshing)
+                        .font(.caption2)
+                        // 高度維持 .mini，只往水平方向加內距把按鈕拉寬
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(store.isRefreshing)
+                // 建置標示接在按鈕下面、靠右對齊，壓一階不搶讀
+                Text(AppConfiguration.buildLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help(AppConfiguration.buildDetail)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(store.isRefreshing)
         }
     }
 
