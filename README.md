@@ -2,7 +2,8 @@
 
 AIQuota 是原生 SwiftUI macOS 選單列 App，讀取設定的 HTTPS `quota.json`，顯示 Codex、Claude、AGY 的 `5h`／`7d` 剩餘額度與重置時間。
 
-開發過程的架構與技術決策，請見 [開發決策記錄](docs/development-decisions.md)。
+開發過程的架構與技術決策，請見 [開發決策記錄](docs/development-decisions.md)；
+公開快照 `/quota.json` 的欄位定義請見 [schema v2](docs/public-schema-v2.md)。
 
 ## 功能
 

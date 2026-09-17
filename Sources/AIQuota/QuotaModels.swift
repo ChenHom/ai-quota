@@ -1,6 +1,6 @@
 import Foundation
 
-/// 公開快照 `/quota.json` 的解碼型別，對應 schema v2（見 public-schema-v2.md）。
+/// 公開快照 `/quota.json` 的解碼型別，對應 schema v2（見 docs/public-schema-v2.md）。
 /// v2 起每個 provider 是「一帳號一元素」的陣列，元素多了 `account`。
 struct QuotaResponse: Decodable {
     /// 伺服器只輸出 v2；版本不符一律視為不可用
