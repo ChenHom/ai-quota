@@ -7,6 +7,8 @@ AIQuota 是原生 SwiftUI macOS 選單列 App，讀取設定的 HTTPS `quota.jso
 ## 功能
 
 - 點選選單列圖示開啟 300 pt 寬的無色原生玻璃面板。
+- 按住卡片會整落下沉，放開彈回；Provider 有多個帳號時同時切換到下一個。
+- 多帳號的卡片以底色與指示點區分帳號，面板固定維持三張卡片。
 - 顯示各 Provider 的 5 小時、7 天額度、最後更新時間與重置時間。
 - 重置時間固定顯示為 `MM/dd HH:mm`（例如 `07/22 04:50`）。
 - Provider 若有可用的重置券（`resetCredits`），名稱旁會顯示 `+N` 徽章：滑鼠懸停顯示最早到期的月／日，點擊展開清單列出每張券的到期時間（`MM/dd HH:mm`）。
@@ -49,5 +51,9 @@ defaults write com.example.aiquota quotaEndpoint -string "https://quota.example.
 
 - `AIQuota.app`：可直接執行的 macOS App bundle。
 - `AIQuota-macos.zip`：可傳送或保存的壓縮檔。
+
+打包時會把當下的 git commit 寫進 `Info.plist`，面板標頭右上角、重新整理按鈕下方顯示，
+滑鼠停留可看到完整版本與建置時間。後綴 `+` 表示打包時工作區還有未提交的改動。
+以 `swift run` 直接執行的裸執行檔沒有 bundle，該處顯示「開發版」。
 
 目前產物未簽署與未公證。第一次開啟時若 macOS 阻擋，可在 Finder 對 App 按右鍵後選擇「打開」。
